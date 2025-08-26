@@ -1,0 +1,4 @@
+.env
+urls.txt
+.vscode/
+.venv/
