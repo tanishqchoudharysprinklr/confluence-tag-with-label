@@ -47,8 +47,14 @@ def is_valid_confluence_url(url: str) -> str:
     :return: True if valid, False otherwise.
     """
     pattern = r"^https://[\w\-]+\.atlassian\.net/wiki/spaces/.+/pages/(\d+)/.*$"
-    match = re.match(pattern, url)
-    
+    match_pages = re.match(pattern, url)
+
+    pattern = r"^https://[\w\-]+\.atlassian\.net/wiki/spaces/.+/folder/(\d+)/?.*"
+    match_folders = re.match(pattern, url)
+
+    match = None
+    if match_pages : match = match_pages
+    if match_folders : match = match_folders
     if match:
         page_id = match.group(1)
         print(f"✅ Valid Confluence URL. Extracted Page ID: {page_id}")
@@ -119,13 +125,39 @@ def test_is_valid_confulence_url():
 def test_read_valid_lines_from_file():
     pass
 
+def get_all_children ( page_id : str , visited_pages : set , confluence : Confluence) -> None :
+
+    if page_id in visited_pages : return
+
+    visited_pages.add(page_id)
+
+    try :
+        child_generators = [ 
+            confluence.get_page_child_by_type(page_id, type='page', start=None, limit=None, expand=None),
+            confluence.get_page_child_by_type(page_id, type='folder', start=None, limit=None, expand=None)
+        ]
+    except  Exception as e :
+        print(f"Could not get children for {page_id}")
+    
+
+    for child_generator in child_generators :
+        for child_id in child_generator :
+            if "id" not in child_id :
+                print("Invalid child received",child_id)
+                get_all_children(child_id["id"],visited_pages,confluence)    
+
 def main():
 
     if len(sys.argv) < 2:
         print("❌ Please provide a URL as the first argument.")
         sys.exit(1)
+    
+    if len(sys.argv) < 3:
+        print("❌ Please provide a file name containing label URLs as the second argument.")
+        sys.exit(1)
 
     label = sys.argv[1]
+    content_pages_file = sys.argv[2]
 
     load_dotenv()
 
@@ -135,8 +167,14 @@ def main():
         password=os.getenv("CONFLUENCE_API_KEY")
     )
 
-    page_id_list = read_valid_lines_from_file("urls.txt")
-    for page_id in page_id_list:
+    page_id_list = read_valid_lines_from_file(content_pages_file)
+
+    visited_pages = set()
+
+    for page_id in page_id_list :
+        get_all_children(page_id,visited_pages,confluence)
+
+    for page_id in visited_pages:
         add_label_to_page(confluence, page_id, label)
         print(f"added label: {label} to page: {page_id}")
 
